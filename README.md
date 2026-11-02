@@ -1,141 +1,197 @@
-# Java SpringBoot based microservices with deployment on Amazon EKS with AWS CodePipeline
+# Spring PetClinic Microservices on Amazon ECS
 
-## Objective
+A Java Spring Boot microservices project focused on decomposing the Spring PetClinic application into independently deployable services, containerising them with Docker, and deploying them on Amazon ECS.
 
-Objective of this project is to demonstrate Containerized and Kubernetized microservices deployment on Amazon EKS through CI/CD Pipeline using AWS DevOps Tools.
 
-The project demonstrates some of the Kubernetes related nuances such as externally exposing a microservices over the internet and at the same time only exposing a microservice internally to other microservices.
+## Project Overview
 
-For authenticating the clients for microservice-based API invocation, the project makes use of Amazon Cognito User Pool.
+The project explores moving Spring PetClinic from a monolithic deployment model towards independently deployable Spring Boot microservices. Each service is packaged as a separate Docker image and designed to run as an ECS service.
 
-To demonstrate Agile development and deployment, project uses of AWS DevOps Tools based deployment pipeline using AWS CodePipeline, AWS CodeBuild. The CI/CD build pipeline can make use of GitHub or AWS CodeCommit or other Soruce Code control systems.
+The deployment uses Amazon ECS for container orchestration, Amazon ECR for image storage, Elastic Load Balancing for application traffic, and IAM roles for AWS permissions. Maven and the AWS CLI are used in the build and deployment workflow.
 
-## Project Description
-### Code structure
-This is a multi-module maven based Spring-Boot project with two microservices. Both microservices are packaged as separate modules and get built as Docker image as part of the AWS CodeBuild build stage execution.
+## Key Contributions
 
-### Springboot Microservices
-Microservices are implemented as Springboot project along with Spring Security. 
+- Re-architected the Spring PetClinic monolith into independently deployable Spring Boot microservices.
+- Packaged each microservice as its own Docker image for independent build and deployment.
+- Deployed the services on Amazon ECS using ECS clusters, task definitions, and services.
+- Configured Elastic Load Balancing to route incoming application traffic.
+- Set up IAM roles and permissions for deployment and runtime access.
+- Created a CI/CD workflow using Maven and the AWS CLI to automate application builds, image publishing, and deployment updates.
 
-"Product" microservice is external facing which calls the other internal microservice "Review". 
+## Architecture
 
-Both microservices are authenticated with Amazon Cognito User pool based authentication using OIDC - OAuth2 (JWT) mechanism.
-
-### Kubernetes deployment
-The project also consists of Kubernetes deployment artifact that defines how the Kubernetes deployment
-
-Product microservice is internet facing and is exposed using Ingress controller. Product microservice invokes Review microservice which is exposed only within Kubernetes cluster using ClusterIP.
-
-## Set-up steps
-
-### EKS Cluster
-Create Amazon EKS Cluster with 3 Compute nodes with instance type t3.small or larger
-
-### Amazon ECR
-Create private Amazon ECR Repositories for Docker images for two microservices
-- Product
-- Review
-
-### Amazon Cognito
-- Create Amazon Cognito User Pool with at-least one validated user.
-- Make sure you update the application.yml (<project_module>/src/main/resources) files under both Java project modules (Product and Review) with the Cognito User Pool Id that you created.
-    - You can get the User Pool Id from Amazon Cognito Console
-
-```yaml
-spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: https://cognito-idp.{AWS-Region}.amazonaws.com/{Cognito-user-pool-Id}
+```text
+                 Source Repository
+                        |
+                        v
+                 Build Workflow
+                  Maven + AWS CLI
+                        |
+              +---------+---------+
+              |                   |
+              v                   v
+         Build Service A     Build Service B
+              |                   |
+              v                   v
+         Docker Image A      Docker Image B
+              |                   |
+              +---------+---------+
+                        |
+                        v
+                   Amazon ECR
+                        |
+                        v
+                    Amazon ECS
+                   (ECS Cluster)
+                        |
+              +---------+---------+
+              |                   |
+              v                   v
+          ECS Service A       ECS Service B
+          Task Definition     Task Definition
+              |                   |
+              +---------+---------+
+                        |
+                        v
+             Elastic Load Balancing
+                        |
+                        v
+                   Application
 ```
 
-### AWS CodeBuild
-Create AWS CodeBuild project named as - "aws-samples-k8s-microservices"
-- In the Environment section select following settings
-    - Managed image
-    - Operating System - Ubuntu
-    - Runtime - Standard
-    - Image - Select latest image available e.g. aws/codebuild/standard:6.0
-    - Image version - Select - Always use the latest image for this runtme version
-    - Tick the "Privileged" checkbox. This flag is needed to build the Docker image inside the CodeBuild stage.
-- Create following environment variables as part of configuration
-    1. ECR_PRODUCT_REPOSITORY_URI - ECR Repository for Product Container Image
-    2. ECR_REVIEW_REPOSITORY_URI - ECR Repository for Review Container Image
-    3. EKS_CLUSTER_NAME - Name of the EKS Cluster
-    4. AWS_REGION - AWS Region e.g. ap-south-1
-    5. ECR_REGISTRY - Elastic Container Registry URL for your Private Repository e.g. <AWS_ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com
+The diagram is a logical overview. Update service names and traffic routing to match the actual implementation.
 
-#### IAM Role for AWS CodeBuild
-By default AWS CodeBuild will create a Service Role - "codebuild-aws-samples-k8s-microservices-service-role" if AWS CodeBuild Project name is "aws-samples-k8s-microservices".
+## Technology Stack
 
-For this Role, add following permission policy through AWS command line or AWS IAM Console.
-Below permissions are needed for AWS CodeBuild to work with Amazon ECR Service and Amazon EKS cluster
+- **Language:** Java
+- **Framework:** Spring Boot
+- **Build:** Maven
+- **APIs:** REST
+- **Containerisation:** Docker
+- **Container orchestration:** Amazon ECS
+- **Container registry:** Amazon ECR
+- **Load balancing:** Elastic Load Balancing
+- **Cloud and access management:** AWS, IAM
+- **Automation:** AWS CLI, Maven
+- **Version control:** Git, GitHub
 
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Sid": "VisualEditor0",
-            "Effect": "Allow",
-            "Action": [
-              "eks:DescribeNodegroup",
-              "eks:DescribeUpdate",
-              "eks:DescribeCluster",
-              "ecr:CompleteLayerUpload",
-              "ecr:GetAuthorizationToken",
-              "ecr:UploadLayerPart",
-              "ecr:InitiateLayerUpload",
-              "ecr:BatchCheckLayerAvailability",
-              "ecr:PutImage"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-```       
+## Microservices
 
-### Updating Kubernetes `aws-auth` ConfigMap
-1. Edit the aws-auth ConfigMap of your cluster.
-```shell
-$ kubectl -n kube-system edit configmap/aws-auth
-```  
-2. Add the AWS CodeBuild Project specific execution service role as shown below,
-```yaml
-apiVersion: v1
-data:
-  mapRoles: |
-    - groups:
-      - system:masters
-      rolearn: arn:aws:iam::{AWS_Account_ID}:role/codebuild-aws-samples-k8s-microservices-service-role
-      username: codebuild-aws-samples-k8s-microservices-service-role
+The application is intended to be split into services with clear responsibilities and independent deployment boundaries.
+
+For each service, document its actual responsibility, REST endpoints, port, configuration, and any communication with other services. Replace these placeholders with the service names and details present in the codebase.
+
+| Service | Responsibility |
+|---|---|
+| Service A | Add the implemented business responsibility |
+| Service B | Add the implemented business responsibility |
+
+## Docker
+
+Each Spring Boot service is packaged as a separate Docker image.
+
+Typical build steps:
+
+1. Build the application JAR with Maven.
+2. Build a Docker image using the service's Dockerfile.
+3. Tag the image with a release version or commit identifier.
+4. Push the image to Amazon ECR.
+
+Example commands (adjust paths and names):
+
+```bash
+mvn clean package
+docker build -t <service-image>:<tag> <service-directory>
 ```
 
-### AWS CodePipeline
-- Create AWS CodePipeline Project with two stages
-    - Configrue Source stage with Source Provider as this Github project forked in your own account
-    - Configure Build stage with the CodeBuild project "aws-samples-k8s-microservices" created above
-- AWS CodePipeline will get triggered on your Github commit.
+## Amazon ECS Deployment
 
-## Troubleshooting AWS CodePipeline and AWS CodeBuild Errors
-Q1. How do I resolve "error: You must be logged in to the server (Unauthorized)" errors when connecting to an Amazon EKS cluster from CodeBuild?
-- https://aws.amazon.com/premiumsupport/knowledge-center/codebuild-eks-unauthorized-errors/
+Amazon ECS runs and manages the containerised services.
 
-## How to invoke the Product microservice API?
-### Using Postman
-TO BE ADDED
+- **ECS cluster:** Groups the ECS services and tasks.
+- **Task definition:** Specifies the container image, CPU and memory, port mappings, environment variables, logging, and IAM roles.
+- **ECS service:** Maintains the desired number of running tasks and deploys task definition revisions.
+- **Amazon ECR:** Stores the Docker images referenced by task definitions.
 
-## Next Steps
-    - Connect to RDS with Security Groups mechanism
-    - Use of AWS X-Ray
-    - USe of Istio/App Mesh
+## Load Balancing and IAM
 
-## Security
+Elastic Load Balancing provides an entry point for application traffic and routes requests to configured targets. Configure listeners, target groups, health checks, and security groups according to the application.
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+IAM roles control access to AWS resources:
 
-## License
+- The **task execution role** allows ECS to pull images and publish logs.
+- The **task role** grants the application access to AWS services when required.
+- The **CI/CD role** allows the deployment workflow to publish images and update ECS resources.
 
-This library is licensed under the MIT-0 License. See the LICENSE file.
+Use least-privilege permissions and do not commit credentials or secrets to the repository.
 
+## CI/CD Workflow
+
+The Maven- and AWS CLI-based workflow is intended to automate these stages:
+
+1. Retrieve the source code from the configured Git repository.
+2. Build and test the Spring Boot services using Maven.
+3. Build separate Docker images for each service.
+4. Authenticate with Amazon ECR and push the images.
+5. Register updated ECS task definition revisions.
+6. Update ECS services to deploy the new image versions.
+7. Verify that the ECS services are stable and the application is healthy.
+
+Example AWS CLI commands (replace placeholders with actual values):
+
+```bash
+aws sts get-caller-identity
+
+aws ecr get-login-password --region <AWS_REGION> \
+  | docker login --username AWS --password-stdin \
+    <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com
+
+aws ecs describe-services \
+  --cluster <ECS_CLUSTER_NAME> \
+  --services <ECS_SERVICE_NAME> \
+  --region <AWS_REGION>
+```
+
+## Prerequisites and Local Build
+
+Required tools: Java (project-compatible version), Maven, Docker, and AWS CLI. The AWS identity used for deployment must have the necessary ECS, ECR, IAM, networking, and load-balancing permissions.
+
+Build from the repository root:
+
+```bash
+mvn clean install
+```
+
+Run a service locally from its module:
+
+```bash
+mvn spring-boot:run
+```
+
+## Configuration
+
+Keep environment-specific values outside source code. Typical settings include `AWS_REGION`, `ECR_REPOSITORY_URI`, `ECS_CLUSTER_NAME`, `ECS_SERVICE_NAME`, `IMAGE_TAG`, and the task-definition file path. Store credentials and secrets using a secure mechanism; never commit them to Git.
+
+## Testing and Validation
+
+- Confirm Maven compilation and tests pass.
+- Verify each service starts and responds on its configured port.
+- Confirm Docker images build and run.
+- Verify ECS tasks reach `RUNNING` and services become stable.
+- Check load-balancer target health and application endpoints.
+- Run the CI/CD workflow and verify image publishing and deployment.
+
+## Troubleshooting
+
+- **ECS task stops:** Inspect the stopped-task reason, container exit code, logs, environment variables, ports, and memory settings.
+- **Image pull fails:** Check the ECR URI and tag, repository access, and task execution role.
+- **Unhealthy load-balancer target:** Check the health-check path, port, application readiness, and security groups.
+- **Deployment fails:** Verify the AWS CLI identity and CI/CD role permissions.
+
+## Future Improvements
+
+Add automated integration tests, CloudWatch observability, ECS Service Auto Scaling, deployment rollback, and stronger secrets management.
+
+---
+
+**Project focus:** Spring Boot microservices, Docker containerisation, Amazon ECS deployment, Elastic Load Balancing, IAM, and CI/CD automation using Maven and the AWS CLI.
